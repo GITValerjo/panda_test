@@ -1,5 +1,5 @@
 Результат вывода в консоли:
-$ perl kill_double_hash.pl
+$ perl del_doubles_hash.pl
 a => 1
 d => 3
 b => 2
