@@ -11,7 +11,7 @@ sub http_get {
     # Создаем сокет
     my $socket = IO::Socket::INET->new(
         PeerHost => $host,
-        PeerPort => 80,          # HTTP использует порт 80
+        PeerPort => 80,
         Proto    => 'tcp',
         Timeout  => $timeout
     ) or die "Не удалось подключиться к $host: $!\n";
