@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use JSON;
 use threads;
+use Thread::Queue;
 use Benchmark qw(:all);
 
 # Загрузка хеша из файла
@@ -11,11 +12,12 @@ open my $fh, '<', $filename or die "Не удалось открыть файл 
 my $json_text = do { local $/; <$fh> };
 close $fh;
 
+# Декодируем JSON
 my %h = %{ decode_json($json_text) };
 
-# Оптимизированное параллельное решение
+# Оптимизированное параллельное решение с использованием threads и Thread::Queue
 sub parallel_optimized {
-    my $max_threads = 8;  # Количество потоков
+    my $max_threads = 4;  # Количество потоков
     my @keys = keys %h;   # Ключи исходного хэша
     my $chunk_size = int(@keys / $max_threads) + 1;
 
@@ -25,39 +27,47 @@ sub parallel_optimized {
         push @chunks, [splice(@keys, 0, $chunk_size)];
     }
 
+    # Создаем очередь задач
+    my $work_queue = Thread::Queue->new(@chunks);
+
+    # Создаем очередь для результатов
+    my $result_queue = Thread::Queue->new();
+
     # Создаем потоки
     my @threads;
-
-    foreach my $chunk (@chunks) {
+    for (1 .. $max_threads) {
         push @threads, threads->create(sub {
-            my %local_seen;
-            my %local_result;
+            while (my $chunk = $work_queue->dequeue_nb()) {
+                my %local_reversed;
 
-            foreach my $key (@$chunk) {
-                my $value = $h{$key};
-                if (!$local_seen{$value}) {
-                    $local_seen{$value} = 1;
-                    $local_result{$key} = $value;
+                # Разворачиваем хэш в локальном потоке
+                foreach my $key (@$chunk) {
+                    my $value = $h{$key};
+                    $local_reversed{$value} = $key;  # Перезаписываем дубли
                 }
-            }
 
-            return \%local_result;  # Возвращаем локальный результат
+                # Отправляем результат в очередь
+                $result_queue->enqueue(\%local_reversed);
+            }
         });
     }
 
-    # Собираем результаты из всех потоков
-    my %final_result;
-    my %global_seen;
+    # Ждем завершения потоков
+    $_->join() for @threads;
 
-    foreach my $thread (@threads) {
-        my $result_ref = $thread->join();  # Ждем завершения потока и получаем результат
-        foreach my $key (keys %$result_ref) {
-            my $value = $result_ref->{$key};
-            if (!$global_seen{$value}) {
-                $global_seen{$value} = 1;
-                $final_result{$key} = $value;
-            }
+    # Собираем результаты из очереди
+    my %final_reversed;
+    while (my $result_ref = $result_queue->dequeue_nb()) {
+        foreach my $value (keys %$result_ref) {
+            $final_reversed{$value} //= $result_ref->{$value};
         }
+    }
+
+    # Восстанавливаем исходный хэш из развернутого
+    my %final_result;
+    foreach my $value (keys %final_reversed) {
+        my $key = $final_reversed{$value};
+        $final_result{$key} = $value;
     }
 
     # Обновляем исходный хэш

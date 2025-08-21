@@ -15,23 +15,19 @@ my $dbh = DBI->connect($dsn, $username, $password, { RaiseError => 1, AutoCommit
 # Размер порции
 my $batch_size = 1000;
 
-# Начальное значение для диапазона
-my $start_row = 1;
+# Начальное значение для диапазона id
+my $start_id = 0;
 
 while (1) {
-    # Читаем порцию данных с использованием ROWNUM
+    # Читаем порцию данных с использованием диапазона id
     my $sql = qq{
         SELECT id, data
-        FROM (
-            SELECT id, data, ROWNUM AS rnum
-            FROM some_table
-            WHERE ROWNUM <= ?
-        )
-        WHERE rnum >= ?
+        FROM some_table
+        WHERE id > ? AND id <= ?
     };
 
     my $sth = $dbh->prepare($sql);
-    $sth->execute($start_row + $batch_size - 1, $start_row);
+    $sth->execute($start_id, $start_id + $batch_size);
 
     # Проверяем, есть ли данные
     my $rows = $sth->fetchall_arrayref({});
@@ -47,7 +43,7 @@ while (1) {
     }
 
     # Увеличиваем начальный диапазон
-    $start_row += $batch_size;
+    $start_id += $batch_size;
 
     $sth->finish;
 }
